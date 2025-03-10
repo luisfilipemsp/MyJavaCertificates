@@ -2,6 +2,7 @@ package com.lfmsp.service;
 
 
 import com.lfmsp.config.TrustStoreConfig;
+import com.lfmsp.exception.CertificateAccessException;
 import com.lfmsp.model.dto.CertificateDTO;
 import com.lfmsp.model.dto.CertificateDetailDTO;
 import org.springframework.stereotype.Service;
@@ -30,48 +31,54 @@ public class CertificateService {
     }
 
     public List<CertificateDTO> getAllCertificates() {
-        List<CertificateDTO> result = new ArrayList<CertificateDTO>();
+        List<CertificateDTO> certificates = new ArrayList<>();
+        KeyStore trustStore = null;
+        FileInputStream fis = null;
 
-        KeyStore keyStore = null;
         try {
-            keyStore = KeyStore.getInstance("JKS");
-        } catch (KeyStoreException e) {
-            throw new RuntimeException(e);
-        }
+            trustStore = KeyStore.getInstance("JKS");
+            fis = new FileInputStream(config.getPath());
+            trustStore.load(fis, config.getPassword().toCharArray());
 
-        try (FileInputStream fis = new FileInputStream(config.getPath())) {
-            keyStore.load(fis, config.getPassword().toCharArray());
-        } catch (IOException |
-                 NoSuchAlgorithmException | CertificateException e) {
-            throw new RuntimeException(e);
-        }
+            Enumeration<String> aliases = trustStore.aliases();
+            Date currentDate = new Date();
 
-        Enumeration<String> aliases = null;
-        try {
-            aliases = keyStore.aliases();
-        } catch (KeyStoreException e) {
-            throw new RuntimeException(e);
-        }
+            while (aliases.hasMoreElements()) {
+                String alias = aliases.nextElement();
+                Certificate cert = trustStore.getCertificate(alias);
 
-        SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
-        while (aliases.hasMoreElements()) {
-            String alias = aliases.nextElement();
-            Certificate cert = null;
-            try {
-                cert = keyStore.getCertificate(alias);
-            } catch (KeyStoreException e) {
-                throw new RuntimeException(e);
+                if (cert instanceof X509Certificate) {
+                    X509Certificate x509Cert = (X509Certificate) cert;
+
+                    certificates.add(new CertificateDTO(
+                            alias,
+                            x509Cert.getSubjectX500Principal().getName(),
+                            x509Cert.getIssuerX500Principal().getName(),
+                            x509Cert.getNotAfter(),
+                            currentDate.before(x509Cert.getNotAfter())
+                    ));
+                }
             }
-            if (cert instanceof X509Certificate x509Cert) {
-                Date expiration = x509Cert.getNotAfter();
-                /*System.out.println("Alias: " + alias);
-                System.out.println("Fecha de Expiración: " + dateFormat.format(expiration));
-                System.out.println(); // Espacio entre certificados*/
+
+            return certificates;
+
+        } catch (KeyStoreException e) {
+            throw new CertificateAccessException("Error en la configuración del almacén", e);
+        } catch (NoSuchAlgorithmException e) {
+            throw new CertificateAccessException("Algoritmo no soportado", e);
+        } catch (CertificateException e) {
+            throw new CertificateAccessException("Certificado inválido", e);
+        } catch (IOException e) {
+            throw new CertificateAccessException("Error de E/S accediendo al almacén", e);
+        } finally {
+            if (fis != null) {
+                try {
+                    fis.close();
+                } catch (IOException e) {
+                   // logger.error("Error cerrando el flujo del almacén", e);
+                }
             }
         }
-
-
-        return result;
     }
 
     public CertificateDetailDTO getCertificateDetails(String alias) {

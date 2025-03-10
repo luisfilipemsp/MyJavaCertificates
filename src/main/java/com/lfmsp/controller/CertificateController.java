@@ -3,6 +3,8 @@ package com.lfmsp.controller;
 import com.lfmsp.model.dto.CertificateDTO;
 import com.lfmsp.model.dto.CertificateDetailDTO;
 import com.lfmsp.service.CertificateService;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -20,9 +22,11 @@ public class CertificateController {
         this.certificateService = certificateService;
     }
 
-    @GetMapping
-    public List<CertificateDTO> getAllCertificates() {
-        return certificateService.getAllCertificates();
+    @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<List<CertificateDTO>> getAllCertificates() {
+        return ResponseEntity.ok()
+                .header("Cache-Control", "no-cache, must-revalidate")
+                .body(certificateService.getAllCertificates());
     }
 
     @GetMapping("/{alias}")
