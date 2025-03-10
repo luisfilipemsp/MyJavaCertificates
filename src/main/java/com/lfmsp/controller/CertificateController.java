@@ -30,7 +30,9 @@ public class CertificateController {
     }
 
     @GetMapping("/{alias}")
-    public CertificateDetailDTO getCertificateDetails(@PathVariable String alias) {
-        return certificateService.getCertificateDetails(alias);
+    public ResponseEntity<CertificateDetailDTO> getCertificateDetails(@PathVariable String alias) {
+        return ResponseEntity.ok()
+                .header("Cache-Control", "no-cache, must-revalidate")
+                .body(certificateService.getCertificateDetails(alias));
     }
 }

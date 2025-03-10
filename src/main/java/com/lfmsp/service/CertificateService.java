@@ -20,6 +20,7 @@ import java.util.Date;
 import java.util.Enumeration;
 import java.util.List;
 import java.text.SimpleDateFormat;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class CertificateService {
@@ -82,9 +83,63 @@ public class CertificateService {
     }
 
     public CertificateDetailDTO getCertificateDetails(String alias) {
-        CertificateDetailDTO result = null;
+        CertificateDetailDTO certificate = null;
 
-        return result;
+        KeyStore trustStore = null;
+        FileInputStream fis = null;
+
+        try {
+            trustStore = KeyStore.getInstance("JKS");
+            fis = new FileInputStream(config.getPath());
+            trustStore.load(fis, config.getPassword().toCharArray());
+
+            Enumeration<String> aliases = trustStore.aliases();
+            Date currentDate = new Date();
+
+            while (aliases.hasMoreElements()) {
+                String currentAlias = aliases.nextElement();
+                Certificate cert = trustStore.getCertificate(alias);
+                if (currentAlias.equals(alias)) {
+                    if (cert instanceof X509Certificate) {
+                        X509Certificate x509Cert = (X509Certificate) cert;
+
+                        certificate = new CertificateDetailDTO(
+                                alias,
+                                x509Cert.getSubjectX500Principal().getName(),
+                                x509Cert.getIssuerX500Principal().getName(),
+                                x509Cert.getSerialNumber().toString(16),
+                                x509Cert.getNotBefore(),
+                                x509Cert.getNotAfter(),
+                                calculateRemainingDays(x509Cert.getNotAfter()),
+                                x509Cert.getSigAlgName(),
+                                currentDate.before(x509Cert.getNotAfter())
+                        );
+                    }
+                }
+            }
+            return certificate;
+
+        } catch (KeyStoreException e) {
+            throw new CertificateAccessException("Error en la configuración del almacén", e);
+        } catch (NoSuchAlgorithmException e) {
+            throw new CertificateAccessException("Algoritmo no soportado", e);
+        } catch (CertificateException e) {
+            throw new CertificateAccessException("Certificado inválido", e);
+        } catch (IOException e) {
+            throw new CertificateAccessException("Error de E/S accediendo al almacén", e);
+        } finally {
+            if (fis != null) {
+                try {
+                    fis.close();
+                } catch (IOException e) {
+                    // logger.error("Error cerrando el flujo del almacén", e);
+                }
+            }
+        }
     }
 
+    private static long calculateRemainingDays(Date expiration) {
+        long diff = expiration.getTime() - new Date().getTime();
+        return diff > 0 ? TimeUnit.MILLISECONDS.toDays(diff) : 0;
+    }
 }
